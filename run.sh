@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #SBATCH --partition=das
 #SBATCH --account=das
 #SBATCH --qos=das-preempt
