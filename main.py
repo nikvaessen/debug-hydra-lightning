@@ -1,10 +1,11 @@
-import functools
-import time
+import pathlib
 
+import wandb
 import lightning
 import hydra
 import torch
 
+from lightning.fabric.loggers import TensorBoardLogger
 from torchdata.datapipes.iter import *
 
 from torch.utils.data import DataLoader
@@ -41,12 +42,23 @@ def construct_datapipe(shard_workers: bool = False):
 
 @hydra.main(config_path="config", config_name="main", version_base="1.3")
 def main(cfg):
+    # init wandb and tensorboard logger
+    logger = TensorBoardLogger(pathlib.Path.cwd(), name="tensorboard", version="")
+
     fabric = lightning.Fabric(
         accelerator="gpu",
         devices=cfg.devices,
         num_nodes=cfg.num_nodes,
         precision=cfg.precision,
+        loggers=logger,
     )
+
+    if fabric.is_global_zero:
+        tensorboard_dir = pathlib.Path.cwd() / "tensorboard"
+        tensorboard_dir.mkdir(exist_ok=True, parents=True)
+        wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
+        wandb.init(project="debug")
+
     fabric.launch()
 
     network = Network()
@@ -61,8 +73,8 @@ def main(cfg):
         y = network(x)
         y_target = torch.randint(0, 9, size=(1,), device=fabric.device)
         loss = torch.nn.functional.cross_entropy(y, y_target)
-        print(loss)
 
+        fabric.log("loss", loss)
         fabric.backward(loss)
         opt.step()
 
