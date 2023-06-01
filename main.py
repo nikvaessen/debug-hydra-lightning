@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--bug", action="store_true")
     args = parser.parse_args()
 
-    fabric = lightning.Fabric(accelerator="gpu", devices=args.devices)
+    fabric = lightning.Fabric(accelerator="gpu", devices=args.devices, strategy="ddp")
 
     fabric.launch()
 
@@ -38,11 +38,13 @@ def main():
 
         network.load_state_dict(ckpt["network"])
     else:
-        fabric.save("network.ckpt", {"network": network.state_dict()})
+        if fabric.is_global_zero:
+            fabric.save("network.ckpt", {"network": network.state_dict()})
+            fabric.print("network.ckpt now exists, run this script again.")
         exit()
 
     while True:
-        print("sleeping")
+        fabric.print("sleeping")
         time.sleep(1)
 
 
