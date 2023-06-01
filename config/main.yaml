@@ -1,0 +1,6 @@
+num_nodes: 1
+devices: 2
+
+hydra:
+  job:
+    chdir: true
