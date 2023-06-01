@@ -84,7 +84,7 @@ def main(cfg):
     while True:
         iteration += 1
 
-        if iteration % 100 == 0:
+        if iteration % 1000 == 0:
             val_loss_list = []
             for x in val_dataloader:
                 with torch.no_grad():
@@ -96,6 +96,8 @@ def main(cfg):
         loss = step(fabric, network, x)
 
         fabric.log("loss", loss)
+        if iteration % 100 == 0:
+            fabric.print(f"{loss=}")
         fabric.backward(loss)
         opt.step()
 

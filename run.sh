@@ -5,7 +5,7 @@
 #SBATCH --qos=das-preempt
 
 #SBATCH --time=4-00:00
-#SBATCH --job-name=bash
+#SBATCH --job-name=lightning
 #SBATCH --output=/home/nvaessen/logs/%A_%a.out
 #SBATCH --error=/home/nvaessen/logs/%A_%a.err
 
