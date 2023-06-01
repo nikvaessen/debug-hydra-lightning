@@ -27,9 +27,12 @@ def get_sample(seed: int):
     return torch.rand((1000,), generator=rng)
 
 
-def construct_datapipe(shard_workers: bool = False):
+def construct_datapipe(shard_workers: bool = False, is_infinite: bool = False):
     dp = IterableWrapper(range(0, 10_000))
-    dp = Cycler(dp)
+
+    if is_infinite:
+        dp = Cycler(dp)
+
     dp = Shuffler(dp)
 
     if shard_workers:
@@ -64,19 +67,45 @@ def main(cfg):
     network = Network()
     network, opt = fabric.setup(network, torch.optim.Adam(network.parameters()))
 
-    train_dataloader = fabric.setup_dataloaders(
-        DataLoader(construct_datapipe(cfg.shard_workers), num_workers=cfg.num_workers)
+    train_dataloader, val_dataloader = fabric.setup_dataloaders(
+        DataLoader(
+            construct_datapipe(cfg.shard_workers, is_infinite=True),
+            num_workers=cfg.num_workers,
+        ),
+        DataLoader(
+            construct_datapipe(cfg.shard_workers, is_infinite=False),
+            num_workers=cfg.num_workers,
+        ),
     )
 
     # dataloader is infinite
-    for x in train_dataloader:
-        y = network(x)
-        y_target = torch.randint(0, 9, size=(1,), device=fabric.device)
-        loss = torch.nn.functional.cross_entropy(y, y_target)
+    train_iter = iter(train_dataloader)
+    iteration = 0
+    while True:
+        iteration += 1
+
+        if iteration % 100 == 0:
+            val_loss_list = []
+            for x in val_dataloader:
+                with torch.no_grad():
+                    loss = step(fabric, network, x)
+                    val_loss_list.append(loss.cpu())
+            fabric.log("val_loss", torch.mean(torch.tensor(val_loss_list)))
+
+        x = next(train_iter)
+        loss = step(fabric, network, x)
 
         fabric.log("loss", loss)
         fabric.backward(loss)
         opt.step()
+
+
+def step(fabric, network, x):
+    y = network(x)
+    y_target = torch.randint(0, 9, size=(1,), device=fabric.device)
+    loss = torch.nn.functional.cross_entropy(y, y_target)
+
+    return loss
 
 
 if __name__ == "__main__":
