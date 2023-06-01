@@ -1,14 +1,9 @@
-import pathlib
+import argparse
+import os.path
+import time
 
-import wandb
 import lightning
-import hydra
 import torch
-
-from lightning.fabric.loggers import TensorBoardLogger
-from torchdata.datapipes.iter import *
-
-from torch.utils.data import DataLoader
 
 
 class Network(torch.nn.Module):
@@ -21,93 +16,34 @@ class Network(torch.nn.Module):
         return self.fc1(x)
 
 
-def get_sample(seed: int):
-    rng = torch.random.manual_seed(seed)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--devices", default=2)
+    parser.add_argument("--bug", action="store_true")
+    args = parser.parse_args()
 
-    return torch.rand((1000,), generator=rng)
-
-
-def construct_datapipe(shard_workers: bool = False, is_infinite: bool = False):
-    dp = IterableWrapper(range(0, 10_000))
-
-    if is_infinite:
-        dp = Cycler(dp)
-
-    dp = Shuffler(dp)
-
-    if shard_workers:
-        dp = ShardingFilter(dp)
-
-    dp = Mapper(dp, get_sample)
-
-    return dp
-
-
-@hydra.main(config_path="config", config_name="main", version_base="1.3")
-def main(cfg):
-    # init wandb and tensorboard logger
-    logger = TensorBoardLogger(pathlib.Path.cwd(), name="tensorboard", version="")
-
-    fabric = lightning.Fabric(
-        accelerator="gpu",
-        devices=cfg.devices,
-        num_nodes=cfg.num_nodes,
-        precision=cfg.precision,
-        loggers=logger,
-    )
+    fabric = lightning.Fabric(accelerator="gpu", devices=args.devices)
 
     fabric.launch()
-
-    if fabric.is_global_zero:
-        tensorboard_dir = pathlib.Path.cwd() / "tensorboard"
-        tensorboard_dir.mkdir(exist_ok=True, parents=True)
-        wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
-        wandb.init(project="debug")
 
     network = Network()
     network, opt = fabric.setup(network, torch.optim.Adam(network.parameters()))
 
-    train_dataloader, val_dataloader = fabric.setup_dataloaders(
-        DataLoader(
-            construct_datapipe(cfg.shard_workers, is_infinite=True),
-            num_workers=cfg.num_workers,
-        ),
-        DataLoader(
-            construct_datapipe(cfg.shard_workers, is_infinite=False),
-            num_workers=cfg.num_workers,
-        ),
-    )
+    produce_bug = args.bug
+    if os.path.exists("network.ckpt"):
+        if produce_bug:
+            ckpt = torch.load("network.ckpt")
+        else:
+            ckpt = fabric.load("network.ckpt")
 
-    # dataloader is infinite
-    train_iter = iter(train_dataloader)
-    iteration = 0
+        network.load_state_dict(ckpt["network"])
+    else:
+        fabric.save("network.ckpt", {"network": network.state_dict()})
+        exit()
+
     while True:
-        iteration += 1
-
-        if iteration % 1000 == 0:
-            val_loss_list = []
-            for x in val_dataloader:
-                with torch.no_grad():
-                    loss = step(fabric, network, x)
-                    val_loss_list.append(loss.cpu())
-            fabric.log("val_loss", torch.mean(torch.tensor(val_loss_list)))
-
-        x = next(train_iter)
-        loss = step(fabric, network, x)
-
-        fabric.log("loss", loss)
-        if iteration % 100 == 0:
-            fabric.print(f"{loss=}")
-        fabric.backward(loss)
-        opt.step()
-
-
-def step(fabric, network, x):
-    y = network(x)
-    y_target = torch.randint(0, 9, size=(1,), device=fabric.device)
-    loss = torch.nn.functional.cross_entropy(y, y_target)
-
-    return loss
+        print("sleeping")
+        time.sleep(1)
 
 
 if __name__ == "__main__":
