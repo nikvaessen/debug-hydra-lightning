@@ -56,13 +56,13 @@ def main(cfg):
         loggers=logger,
     )
 
+    fabric.launch()
+
     if fabric.is_global_zero:
         tensorboard_dir = pathlib.Path.cwd() / "tensorboard"
         tensorboard_dir.mkdir(exist_ok=True, parents=True)
         wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
         wandb.init(project="debug")
-
-    fabric.launch()
 
     network = Network()
     network, opt = fabric.setup(network, torch.optim.Adam(network.parameters()))
