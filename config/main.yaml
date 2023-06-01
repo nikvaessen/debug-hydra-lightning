@@ -1,5 +1,7 @@
 num_nodes: 1
 devices: 2
+num_workers: 4
+shard_workers: true
 
 hydra:
   job:
