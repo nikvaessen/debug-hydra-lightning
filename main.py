@@ -42,7 +42,10 @@ def construct_datapipe(shard_workers: bool = False):
 @hydra.main(config_path="config", config_name="main", version_base="1.3")
 def main(cfg):
     fabric = lightning.Fabric(
-        accelerator="gpu", devices=cfg.devices, num_nodes=cfg.num_nodes
+        accelerator="gpu",
+        devices=cfg.devices,
+        num_nodes=cfg.num_nodes,
+        precision=cfg.precision,
     )
     fabric.launch()
 

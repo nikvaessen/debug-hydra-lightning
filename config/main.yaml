@@ -2,6 +2,7 @@ num_nodes: 1
 devices: 2
 num_workers: 4
 shard_workers: true
+precision: 16-mixed
 
 hydra:
   job:
